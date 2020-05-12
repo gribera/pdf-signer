@@ -6,6 +6,7 @@ import { PdfKitMock } from '../model/pdf-kit-mock'
 import { SignatureDetails } from '../model/signature-details'
 import { SignatureOptions } from '../model/signature-options'
 import { XObject } from '../model/x-object'
+import { Widget } from '../model/widget'
 import { DEFAULT_BYTE_RANGE_PLACEHOLDER, DEFAULT_SIGNATURE_LENGTH } from './const'
 import PDFKitReferenceMock from './pdf-kit-reference-mock'
 
@@ -57,6 +58,7 @@ const pdfkitAddPlaceholder = async ({
   const APFONT = getFont(pdf, 'Helvetica')
 
   const hasImg = signatureOptions.annotationAppearanceOptions?.imageDetails?.imagePath
+  const hasTxt = signatureOptions.annotationAppearanceOptions?.signatureDetails
 
   const IMG = hasImg
     ? await getImage(
@@ -65,7 +67,10 @@ const pdfkitAddPlaceholder = async ({
       )
     : undefined
 
-  const AP = getAnnotationApparance(pdf, IMG, APFONT, signatureOptions)
+  const AP = hasTxt 
+    ? await getAnnotationApparance(pdf, IMG, APFONT, signatureOptions)
+    : undefined
+
   const SIGNATURE = getSignature(
     pdf,
     byteRangePlaceholder,
@@ -113,12 +118,12 @@ const getWidget = (
   pdf: PdfKitMock,
   fieldIds: PDFKitReferenceMock[],
   signature: PDFKitReferenceMock,
-  AP: PDFKitReferenceMock,
+  AP: PDFKitReferenceMock | undefined,
   signatureCoordinates: CoordinateData,
 ) => {
   const signatureBaseName = 'Signature'
 
-  return pdf.ref({
+  let W: Widget = {
     Type: 'Annot',
     Subtype: 'Widget',
     FT: 'Sig',
@@ -131,10 +136,15 @@ const getWidget = (
     V: signature,
     T: new String(signatureBaseName + (fieldIds.length + 1)), // eslint-disable-line no-new-wrappers
     F: 4,
-    AP: `<</N ${AP.index} 0 R>>`,
     P: pdf.page.dictionary, // eslint-disable-line no-underscore-dangle
-    DA: new String('/Helvetica 0 Tf 0 g'), // eslint-disable-line no-new-wrappers
-  })
+  }
+
+  if (AP) {
+    W.AP = `<</N ${AP.index} 0 R>>`
+    W.DA = new String('/Helvetica 0 Tf 0 g') // eslint-disable-line no-new-wrappers
+  }
+
+  return pdf.ref(W)
 }
 
 const getAnnotationApparance = (
@@ -199,7 +209,10 @@ const generateImage = (imageDetails: ImageDetails, imgIndex: number) => {
   `
 }
 
-const generateSignatureContents = (details: SignatureDetails[]) => {
+const generateSignatureContents = (details: SignatureDetails[] | undefined) => {
+  if (!details)
+    return
+  
   const detailsAsPdfContent = details.map((detail, index) => {
     const detailAsPdfContent = generateSignatureContent(detail)
     return detailAsPdfContent
